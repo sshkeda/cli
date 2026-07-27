@@ -78,4 +78,7 @@ export interface ScrapeResult {
   success: boolean;
   data?: any;
   error?: string;
+  errorCode?: 'AUTH_REQUIRED';
+  retryable?: boolean;
+  recovery?: readonly string[];
 }

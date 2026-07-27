@@ -13,10 +13,30 @@ import {
   updateConfig,
   type GlobalConfig,
 } from './config';
+import { AuthRequiredError } from './errors';
 
 let clientInstance: Firecrawl | null = null;
 
 const DEFAULT_API_URL = 'https://api.firecrawl.dev';
+
+function isAuthRejection(status: number, error: unknown): boolean {
+  if (status === 401) return true;
+  if (status !== 403 || typeof error !== 'string') return false;
+
+  const message = error.toLowerCase();
+  return (
+    message.includes('api key') ||
+    message.includes('auth.md') ||
+    message.includes('authentication')
+  );
+}
+
+function keylessRequestError(status: number, json: any): Error {
+  if (isAuthRejection(status, json?.error)) {
+    return new AuthRequiredError();
+  }
+  return new Error(json?.error || `Firecrawl request failed (HTTP ${status})`);
+}
 
 /**
  * Keyless free tier: scrape and search work without an API key against the
@@ -41,9 +61,7 @@ export async function keylessRequest(
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
-      json?.error || `Firecrawl request failed (HTTP ${response.status})`
-    );
+    throw keylessRequestError(response.status, json);
   }
   return json;
 }
@@ -56,9 +74,7 @@ export async function keylessGet(path: string): Promise<any> {
   });
   const json: any = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
-      json?.error || `Firecrawl request failed (HTTP ${response.status})`
-    );
+    throw keylessRequestError(response.status, json);
   }
   return json;
 }

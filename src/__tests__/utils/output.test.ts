@@ -110,6 +110,59 @@ describe('Output Utilities', () => {
       expect(processExitSpy).toHaveBeenCalledWith(1);
     });
 
+    it('should print actionable auth recovery and prevent blind retry', () => {
+      handleScrapeOutput(
+        {
+          success: false,
+          error: 'Firecrawl requires authentication for this request.',
+          errorCode: 'AUTH_REQUIRED',
+          retryable: false,
+          recovery: [
+            'export FIRECRAWL_API_KEY="fc-YOUR-KEY"',
+            'firecrawl login --api-key "$FIRECRAWL_API_KEY"',
+            'firecrawl login',
+          ],
+        },
+        ['markdown']
+      );
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[AUTH_REQUIRED]')
+      );
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining(
+          'Do not retry until authentication is configured.'
+        )
+      );
+    });
+
+    it('should emit a stable typed auth error when JSON is requested', () => {
+      handleScrapeOutput(
+        {
+          success: false,
+          error: 'Firecrawl requires authentication for this request.',
+          errorCode: 'AUTH_REQUIRED',
+          retryable: false,
+          recovery: ['firecrawl login'],
+        },
+        ['markdown'],
+        undefined,
+        false,
+        true
+      );
+
+      const output = consoleErrorSpy.mock.calls[0][0];
+      expect(JSON.parse(output)).toEqual({
+        success: false,
+        error: {
+          code: 'AUTH_REQUIRED',
+          message: 'Firecrawl requires authentication for this request.',
+          retryable: false,
+          recovery: ['firecrawl login'],
+        },
+      });
+    });
+
     it('should output raw markdown for single markdown format', () => {
       vi.mocked(fs.existsSync).mockReturnValue(true);
 
