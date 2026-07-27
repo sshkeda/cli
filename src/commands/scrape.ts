@@ -9,6 +9,8 @@ import type {
   ScrapeFormat,
   ScrapeLocation,
 } from '../types/scrape';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getClient, isKeylessMode, keylessRequest } from '../utils/client';
 import { handleScrapeOutput, writeOutput } from '../utils/output';
 import {
@@ -49,6 +51,35 @@ function outputTiming(
   }
 
   console.error('Timing:', JSON.stringify(timingInfo, null, 2));
+}
+
+/**
+ * Emit a single-line, machine-readable completion after a scrape output file
+ * has been written successfully. stderr keeps file output and pipelines clean.
+ */
+export function emitScrapeFileCompletion(
+  outputPath: string,
+  formats: Array<string | { type: string }>,
+  json: boolean | undefined,
+  scrapeId: string | undefined
+): void {
+  const extensionForcesJson = outputPath.toLowerCase().endsWith('.json');
+  let format = 'json';
+
+  if (!json && !extensionForcesJson && formats.length === 1) {
+    const requested = formats[0];
+    format = typeof requested === 'string' ? requested : requested.type;
+  }
+
+  process.stderr.write(
+    `${JSON.stringify({
+      event: 'firecrawl.scrape.saved',
+      path: path.resolve(outputPath),
+      bytes: fs.statSync(outputPath).size,
+      format,
+      scrapeId: scrapeId ?? null,
+    })}\n`
+  );
 }
 
 /**
@@ -204,6 +235,14 @@ export async function handleScrapeCommand(
   // Query mode: output answer directly
   if (options.query && result.success && result.data?.answer) {
     writeOutput(result.data.answer, options.output, !!options.output);
+    if (options.output) {
+      emitScrapeFileCompletion(
+        options.output,
+        ['query'],
+        options.json,
+        result.data?.metadata?.scrapeId
+      );
+    }
     return;
   }
 
@@ -225,6 +264,15 @@ export async function handleScrapeCommand(
     options.pretty,
     options.json
   );
+
+  if (options.output && result.success && result.data) {
+    emitScrapeFileCompletion(
+      options.output,
+      effectiveFormats,
+      options.json,
+      result.data?.metadata?.scrapeId
+    );
+  }
 }
 
 /**

@@ -3,7 +3,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { executeScrape } from '../../commands/scrape';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { executeScrape, handleScrapeCommand } from '../../commands/scrape';
 import { getClient } from '../../utils/client';
 import { initializeConfig } from '../../utils/config';
 import { setupTest, teardownTest } from '../utils/mock-client';
@@ -16,6 +19,11 @@ vi.mock('../../utils/client', async () => {
     getClient: vi.fn(),
   };
 });
+
+vi.mock('../../utils/interact-session', () => ({
+  saveInteractSession: vi.fn(),
+  clearInteractSession: vi.fn(),
+}));
 
 describe('executeScrape', () => {
   let mockClient: any;
@@ -419,6 +427,23 @@ describe('executeScrape', () => {
       expect(result.data).toEqual(mockResponse);
     });
 
+    it('should keep the scrape ID message for stdout output', async () => {
+      mockClient.scrape.mockResolvedValue({
+        markdown: '# Test',
+        metadata: { scrapeId: 'scrape-123' },
+      });
+      const stderrSpy = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      await executeScrape({
+        url: 'https://example.com',
+      });
+
+      expect(stderrSpy).toHaveBeenCalledWith('Scrape ID: scrape-123\n');
+      stderrSpy.mockRestore();
+    });
+
     it('should return error result when scrape fails', async () => {
       const errorMessage = 'API Error: Invalid URL';
       mockClient.scrape.mockRejectedValue(new Error(errorMessage));
@@ -482,5 +507,85 @@ describe('executeScrape', () => {
         integration: 'cli',
       });
     });
+  });
+});
+
+describe('handleScrapeCommand file completion', () => {
+  let mockClient: any;
+  let outputDir: string;
+
+  beforeEach(() => {
+    setupTest();
+    initializeConfig({
+      apiKey: 'test-api-key',
+      apiUrl: 'https://api.firecrawl.dev',
+    });
+    mockClient = {
+      scrape: vi.fn(),
+    };
+    vi.mocked(getClient).mockReturnValue(mockClient as any);
+    outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'firecrawl-scrape-'));
+  });
+
+  afterEach(() => {
+    teardownTest();
+    vi.clearAllMocks();
+    fs.rmSync(outputDir, { recursive: true, force: true });
+  });
+
+  it('should emit saved file metadata after writing output', async () => {
+    const outputPath = path.join(outputDir, 'result.md');
+    const content = '# Test Content';
+    mockClient.scrape.mockResolvedValue({
+      markdown: content,
+      metadata: { scrapeId: 'scrape-123' },
+    });
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    await handleScrapeCommand({
+      url: 'https://example.com',
+      formats: ['markdown'],
+      output: outputPath,
+    });
+
+    expect(fs.readFileSync(outputPath, 'utf8')).toBe(content);
+    expect(stderrSpy).toHaveBeenCalledTimes(2);
+    expect(String(stderrSpy.mock.calls[0][0])).toBe('Scrape ID: scrape-123\n');
+    expect(JSON.parse(String(stderrSpy.mock.calls[1][0]))).toEqual({
+      event: 'firecrawl.scrape.saved',
+      path: outputPath,
+      bytes: Buffer.byteLength(content),
+      format: 'markdown',
+      scrapeId: 'scrape-123',
+    });
+    stderrSpy.mockRestore();
+  });
+
+  it('should report JSON when the output extension forces JSON', async () => {
+    const outputPath = path.join(outputDir, 'result.json');
+    mockClient.scrape.mockResolvedValue({
+      markdown: '# Test Content',
+      metadata: { scrapeId: 'scrape-456' },
+    });
+    const stderrSpy = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    await handleScrapeCommand({
+      url: 'https://example.com',
+      formats: ['markdown'],
+      output: outputPath,
+    });
+
+    expect(String(stderrSpy.mock.calls[0][0])).toBe('Scrape ID: scrape-456\n');
+    expect(JSON.parse(String(stderrSpy.mock.calls[1][0]))).toMatchObject({
+      event: 'firecrawl.scrape.saved',
+      path: outputPath,
+      format: 'json',
+      scrapeId: 'scrape-456',
+    });
+    stderrSpy.mockRestore();
   });
 });
