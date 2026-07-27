@@ -5,6 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { ScrapeResult, ScrapeFormat } from '../types/scrape';
+import { AUTH_REQUIRED_CODE, formatAuthRequiredError } from './errors';
 
 /**
  * Determine if output should be JSON based on flag or file extension
@@ -179,7 +180,25 @@ export function handleScrapeOutput(
 ): void {
   if (!result.success) {
     // Always use stderr for errors to allow piping
-    console.error('Error:', result.error);
+    if (result.errorCode === AUTH_REQUIRED_CODE) {
+      if (shouldOutputJson(outputPath, json)) {
+        console.error(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: result.errorCode,
+              message: result.error,
+              retryable: false,
+              recovery: result.recovery,
+            },
+          })
+        );
+      } else {
+        console.error(`Error ${formatAuthRequiredError()}`);
+      }
+    } else {
+      console.error('Error:', result.error);
+    }
     process.exit(1);
   }
 

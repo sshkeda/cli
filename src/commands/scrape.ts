@@ -18,6 +18,7 @@ import {
 import { getOrigin } from '../utils/url';
 import { executeMap } from './map';
 import { getStatus } from './status';
+import { isAuthRequiredError } from '../utils/errors';
 
 /**
  * Output timing information if requested
@@ -185,6 +186,16 @@ export async function executeScrape(
   } catch (error) {
     const requestEndTime = Date.now();
     outputTiming(options, requestStartTime, requestEndTime, error);
+
+    if (isAuthRequiredError(error)) {
+      return {
+        success: false,
+        error: error.message,
+        errorCode: error.code,
+        retryable: error.retryable,
+        recovery: error.recovery,
+      };
+    }
 
     return {
       success: false,
