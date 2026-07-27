@@ -312,6 +312,16 @@ program
   .option('--api-url <url>', 'API URL (or set FIRECRAWL_API_URL env var)')
   .option('--status', 'Show version, auth status, concurrency, and credits')
   .allowUnknownOption() // Allow unknown options when URL is passed directly
+  .addHelpText(
+    'after',
+    `
+Quick start:
+  $ firecrawl scrape https://example.com --only-main-content -o page.md
+
+Scrape defaults: Markdown and full-page content. One URL writes to stdout unless
+-o is used; multiple URLs save separate Markdown files under .firecrawl/.
+`
+  )
   .hook('preAction', async (thisCommand, actionCommand) => {
     // Update global config if API key or URL is provided via global option
     const globalOptions = thisCommand.opts();
@@ -343,7 +353,7 @@ program
 function createScrapeCommand(): Command {
   const scrapeCmd = new Command('scrape')
     .description(
-      'Scrape one or more URLs. Multiple URLs are scraped concurrently and saved to .firecrawl/'
+      'Scrape one URL to stdout or a file; multiple URLs are saved to .firecrawl/'
     )
     .argument('[urls...]', 'URL(s) to scrape')
     .option(
@@ -353,7 +363,7 @@ function createScrapeCommand(): Command {
     .option('-H, --html', 'Output raw HTML (shortcut for --format html)')
     .option(
       '-f, --format <formats>',
-      'Output format(s). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
+      'Output format(s) (default: markdown). Multiple formats can be specified with commas (e.g., "markdown,links,images"). Available: markdown, html, rawHtml, links, images, screenshot, summary, changeTracking, json, attributes, branding. Single format outputs raw content; multiple formats output JSON.'
     )
     .option('--only-main-content', 'Include only main content', false)
     .option(
@@ -371,7 +381,10 @@ function createScrapeCommand(): Command {
       'Firecrawl API key (overrides global --api-key)'
     )
     .option('--api-url <url>', 'API URL (overrides global --api-url)')
-    .option('-o, --output <path>', 'Output file path (default: stdout)')
+    .option(
+      '-o, --output <path>',
+      'Write single-URL output to this file (default: stdout; multiple URLs save to .firecrawl/)'
+    )
     .option('--json', 'Output as JSON format', false)
     .option('--pretty', 'Pretty print JSON output', false)
     .option(
@@ -415,6 +428,16 @@ function createScrapeCommand(): Command {
     .option('--actions <json>', 'JSON actions array to run during scrape')
     .option('--actions-file <path>', 'Path to JSON actions file')
     .option('--proxy <proxy>', 'Proxy mode for scraping (e.g., auto, basic)')
+    .addHelpText(
+      'after',
+      `
+Quick start:
+  $ firecrawl scrape https://example.com --only-main-content -o page.md
+
+Defaults: Markdown, full-page content, and stdout for one URL. Multiple URLs
+save separate Markdown files under .firecrawl/.
+`
+    )
 
     .action(async (positionalArgs, options) => {
       // Collect URLs from positional args and --url option
